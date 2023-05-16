@@ -1,6 +1,8 @@
 [tool.poetry]
 name = "ai-image-sandbox"
 version = "0.1.0"
+description = "ai-image-sandbox"
+authors = []
 readme = "README.md"
 license = "MIT"
 

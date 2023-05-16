@@ -61,5 +61,9 @@ if __name__ == "__main__":
         )
 
         if out.nsfw_content_detected[0] == False:
-            out.images[0].save(os.path.join(outpath, f"{img_count:06}.png"))
+            out.images[0].save(
+                os.path.join(
+                    outpath, f"{os.path.basename(option.model)} - {img_count:06}.png"
+                )
+            )
             img_count += 1

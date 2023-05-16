@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "ai-image-sandbox"
+version = "0.1.0"
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+
+[tool.poetry.group.torch.dependencies]
+torch = {url = "https://download.pytorch.org/whl/cu118/torch-2.0.0%2Bcu118-cp310-cp310-win_amd64.whl"}
+torchvision = {url = "https://download.pytorch.org/whl/cu118/torchvision-0.15.0%2Bcu118-cp310-cp310-win_amd64.whl"}
+
+
+[tool.poetry.group.diffusers.dependencies]
+diffusers = {extras = ["torch"], version = "^0.16.1"}
+
+
+[tool.poetry.group.safetensors.dependencies]
+safetensors = "^0.3.1"
+transformers = "^4.29.1"
+omegaconf = "^2.3.0"
+pytorch-lightning = "^2.0.2"
+
+
+[tool.poetry.group.performance.dependencies]
+xformers = "^0.0.19"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

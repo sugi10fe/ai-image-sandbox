@@ -29,12 +29,13 @@ if __name__ == '__main__':
     img_count = len(os.listdir(outpath))
 
     while True:
-        images = pipe(
+        out = pipe(
             prompt=option.prompt,
             negative_prompt=option.negative,
             width=option.width,
             height=option.height,
-        ).images
+        )
 
-        images[0].save(os.path.join(outpath, f'{img_count:06}.png'))
-        img_count += 1
+        if out.nsfw_content_detected[0] == False:
+            out.images[0].save(os.path.join(outpath, f'{img_count:06}.png'))
+            img_count += 1

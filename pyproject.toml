@@ -30,6 +30,14 @@ pytorch-lightning = "^2.0.2"
 xformers = "^0.0.19"
 
 
+[tool.poetry.group.codeformat.dependencies]
+black = "^23.3.0"
+isort = "^5.12.0"
+
+
+[tool.isort]
+profile = "black"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

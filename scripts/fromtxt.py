@@ -2,13 +2,30 @@ import argparse
 import os
 from pathlib import Path
 
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionImg2ImgPipeline, StableDiffusionPipeline
+from PIL import Image
 
 
 def parse_option():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-I", "--image", type=str, nargs="?", help="image converted from"
+        "-I", "--image", type=str, nargs="?", help="local image path converted from"
+    )
+    parser.add_argument(
+        "-S",
+        "--strength",
+        type=float,
+        nargs="?",
+        default=0.8,
+        help="hou much to transform the reference image",
+    )
+    parser.add_argument(
+        "-G",
+        "--guidance",
+        type=float,
+        nargs="?",
+        default=7.5,
+        help="higher guidance scale encourages to generate images that are closely linked to the text prompt",
     )
     parser.add_argument("-P", "--prompt", type=str, help="positive prompt")
     parser.add_argument("-N", "--negative", type=str, nargs="?", help="negative prompt")
@@ -35,30 +52,47 @@ def parse_option():
 if __name__ == "__main__":
     option = parse_option()
 
+    if option.image is None:
+        pipeline_class = StableDiffusionPipeline
+        image = None
+    else:
+        pipeline_class = StableDiffusionImg2ImgPipeline
+        image = Image.open(option.image).convert("RGB")
+        image.thumbnail((option.width, option.height))
+
     model_path = Path(option.model)
     if model_path.is_file():
-        pipe = StableDiffusionPipeline.from_ckpt(
-            pretrained_model_link_or_path=option.model
-        )
+        pipe = pipeline_class.from_ckpt(pretrained_model_link_or_path=option.model)
     else:
-        pipe = StableDiffusionPipeline.from_pretrained(
+        pipe = pipeline_class.from_pretrained(
             pretrained_model_name_or_path=option.model
         )
 
     pipe = pipe.to(torch_device="cuda")
     pipe.enable_xformers_memory_efficient_attention()
 
-    outpath = os.path.join("outputs/fromtxt", os.path.basename(option.model))
+    outpath = os.path.join(
+        "outputs/fromtxt",
+        os.path.basename(option.model),
+        "." if option.image is None else f"{os.path.basename(option.image)}→",
+    )
     os.makedirs(name=outpath, exist_ok=True)
     img_count = len(os.listdir(outpath))
 
     while True:
-        out = pipe(
-            prompt=option.prompt,
-            negative_prompt=option.negative,
-            width=option.width,
-            height=option.height,
-        )
+        generate_params = {
+            "prompt": option.prompt,
+            "negative_prompt": option.negative,
+        }
+        if image is None:
+            generate_params["width"] = option.width
+            generate_params["height"] = option.height
+        else:
+            generate_params["image"] = image
+            generate_params["strength"] = option.strength
+            generate_params["guidance_scale"] = option.guidance
+
+        out = pipe(**generate_params)
 
         if out.nsfw_content_detected[0] == False:
             out.images[0].save(

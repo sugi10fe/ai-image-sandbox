@@ -17,7 +17,7 @@ def parse_option():
         type=float,
         nargs="?",
         default=0.8,
-        help="hou much to transform the reference image",
+        help="how much to transform the reference image",
     )
     parser.add_argument(
         "-G",

@@ -1,6 +1,5 @@
 import argparse
 import os
-from pathlib import Path
 
 from diffusers import StableDiffusionImg2ImgPipeline, StableDiffusionPipeline
 from PIL import Image
@@ -53,16 +52,25 @@ def parse_option():
 if __name__ == "__main__":
     option = parse_option()
 
+    generate_params = {
+        "prompt": option.prompt,
+        "negative_prompt": option.negative,
+    }
+
     if option.image is None:
         pipeline_class = StableDiffusionPipeline
         image = None
+        generate_params["width"] = option.width
+        generate_params["height"] = option.height
     else:
         pipeline_class = StableDiffusionImg2ImgPipeline
         image = Image.open(option.image).convert("RGB")
         image.thumbnail((option.width, option.height))
+        generate_params["image"] = image
+        generate_params["strength"] = option.strength
+        generate_params["guidance_scale"] = option.guidance
 
-    model_path = Path(option.model)
-    if model_path.is_file():
+    if os.path.isfile(option.model):
         pipe = pipeline_class.from_ckpt(pretrained_model_link_or_path=option.model)
     else:
         pipe = pipeline_class.from_pretrained(
@@ -84,18 +92,6 @@ if __name__ == "__main__":
     img_count = len(os.listdir(outpath))
 
     while True:
-        generate_params = {
-            "prompt": option.prompt,
-            "negative_prompt": option.negative,
-        }
-        if image is None:
-            generate_params["width"] = option.width
-            generate_params["height"] = option.height
-        else:
-            generate_params["image"] = image
-            generate_params["strength"] = option.strength
-            generate_params["guidance_scale"] = option.guidance
-
         out = pipe(**generate_params)
 
         if (

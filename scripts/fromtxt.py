@@ -98,7 +98,11 @@ if __name__ == "__main__":
 
         out = pipe(**generate_params)
 
-        if option.nsfw or out.nsfw_content_detected[0] == False:
+        if (
+            option.nsfw is True
+            or out.nsfw_content_detected is None
+            or out.nsfw_content_detected[0] == False
+        ):
             out.images[0].save(
                 os.path.join(
                     outpath, f"{os.path.basename(option.model)} - {img_count:06}.png"

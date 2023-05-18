@@ -46,6 +46,7 @@ def parse_option():
         type=str,
         help="model id in huggingface / path to checkpoint directory / path to checkpoint file",
     )
+    parser.add_argument("--nsfw", action="store_true", help="allow NSFW image")
     return parser.parse_args()
 
 
@@ -67,6 +68,9 @@ if __name__ == "__main__":
         pipe = pipeline_class.from_pretrained(
             pretrained_model_name_or_path=option.model
         )
+
+    if option.nsfw and pipe.safety_checker is not None:
+        pipe.safety_checker = lambda images, **kwargs: (images, False)
 
     pipe = pipe.to(torch_device="cuda")
     pipe.enable_xformers_memory_efficient_attention()
@@ -94,7 +98,7 @@ if __name__ == "__main__":
 
         out = pipe(**generate_params)
 
-        if out.nsfw_content_detected[0] == False:
+        if option.nsfw or out.nsfw_content_detected[0] == False:
             out.images[0].save(
                 os.path.join(
                     outpath, f"{os.path.basename(option.model)} - {img_count:06}.png"

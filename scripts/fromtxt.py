@@ -8,7 +8,6 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionPipeline,
 )
-from PIL import Image
 
 
 def parse_option():

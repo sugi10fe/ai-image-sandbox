@@ -52,19 +52,31 @@ def parse_option():
         help="model id in huggingface / path to checkpoint directory / path to checkpoint file",
     )
     parser.add_argument("--nsfw", action="store_true", help="allow NSFW image")
-    parser.add_argument("--cnet", type=str, nargs="*", help="ControlNet model id")
     parser.add_argument(
-        "--cnimage", type=str, nargs="*", help="path to ControlNet image"
+        "--cnet", action="extend", type=str, nargs="*", help="ControlNet model id"
     )
     parser.add_argument(
-        "--cnscale", type=float, nargs="*", help="conditioning scale of ControlNet"
+        "--cnimage",
+        action="extend",
+        type=str,
+        nargs="*",
+        help="path to ControlNet image",
+    )
+    parser.add_argument(
+        "--cnscale",
+        action="extend",
+        type=float,
+        nargs="*",
+        help="conditioning scale of ControlNet",
     )
 
     option = parser.parse_args()
-    if (
-        len(option.cnet) != len(option.cnimage)
+    if option.cnet is not None and (
+        option.cnimage is None
+        or option.cnscale is None
+        or len(option.cnet) != len(option.cnimage)
         or len(option.cnet) != len(option.cnscale)
-        or (len(option.cnet) > 0 and option.image is not None)
+        or option.image is not None
     ):
         assert False
 
@@ -91,7 +103,7 @@ if __name__ == "__main__":
         generate_params["strength"] = option.strength
         generate_params["guidance_scale"] = option.guidance
 
-    if len(option.cnet) == 0:
+    if option.cnet is None:
         controlnet = None
     else:
         controlnet = [

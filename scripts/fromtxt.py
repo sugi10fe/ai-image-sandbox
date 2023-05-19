@@ -1,7 +1,13 @@
 import argparse
 import os
 
-from diffusers import StableDiffusionImg2ImgPipeline, StableDiffusionPipeline
+import diffusers.utils
+from diffusers import (
+    ControlNetModel,
+    StableDiffusionControlNetPipeline,
+    StableDiffusionImg2ImgPipeline,
+    StableDiffusionPipeline,
+)
 from PIL import Image
 
 
@@ -46,7 +52,23 @@ def parse_option():
         help="model id in huggingface / path to checkpoint directory / path to checkpoint file",
     )
     parser.add_argument("--nsfw", action="store_true", help="allow NSFW image")
-    return parser.parse_args()
+    parser.add_argument("--cnet", type=str, nargs="*", help="ControlNet model id")
+    parser.add_argument(
+        "--cnimage", type=str, nargs="*", help="path to ControlNet image"
+    )
+    parser.add_argument(
+        "--cnscale", type=float, nargs="*", help="conditioning scale of ControlNet"
+    )
+
+    option = parser.parse_args()
+    if (
+        len(option.cnet) != len(option.cnimage)
+        or len(option.cnet) != len(option.cnscale)
+        or (len(option.cnet) > 0 and option.image is not None)
+    ):
+        assert False
+
+    return option
 
 
 if __name__ == "__main__":
@@ -59,22 +81,37 @@ if __name__ == "__main__":
 
     if option.image is None:
         pipeline_class = StableDiffusionPipeline
-        image = None
         generate_params["width"] = option.width
         generate_params["height"] = option.height
     else:
         pipeline_class = StableDiffusionImg2ImgPipeline
-        image = Image.open(option.image).convert("RGB")
+        image = diffusers.utils.load_image(option.image)
         image.thumbnail((option.width, option.height))
         generate_params["image"] = image
         generate_params["strength"] = option.strength
         generate_params["guidance_scale"] = option.guidance
+
+    if len(option.cnet) == 0:
+        controlnet = None
+    else:
+        controlnet = [
+            ControlNetModel.from_pretrained(model_id) for model_id in option.cnet
+        ]
+        generate_params["image"] = [
+            diffusers.utils.load_image(image) for image in option.cnimage
+        ]
+        generate_params["controlnet_conditioning_scale"] = option.cnscale
 
     if os.path.isfile(option.model):
         pipe = pipeline_class.from_ckpt(pretrained_model_link_or_path=option.model)
     else:
         pipe = pipeline_class.from_pretrained(
             pretrained_model_name_or_path=option.model
+        )
+
+    if controlnet:
+        pipe = StableDiffusionControlNetPipeline(
+            **pipe.components, controlnet=controlnet
         )
 
     if option.nsfw and pipe.safety_checker is not None:
@@ -97,7 +134,7 @@ if __name__ == "__main__":
         if (
             option.nsfw is True
             or out.nsfw_content_detected is None
-            or out.nsfw_content_detected[0] == False
+            or not out.nsfw_content_detected[0]
         ):
             out.images[0].save(
                 os.path.join(

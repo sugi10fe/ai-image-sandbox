@@ -5,6 +5,7 @@ import diffusers.utils
 import torch
 from diffusers import (
     ControlNetModel,
+    DiffusionPipeline,
     StableDiffusionControlNetPipeline,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionPipeline,
@@ -76,7 +77,6 @@ def parse_option():
         or option.cnscale is None
         or len(option.cnet) != len(option.cnimage)
         or len(option.cnet) != len(option.cnscale)
-        or option.image is not None
     ):
         assert False
 
@@ -107,12 +107,22 @@ if __name__ == "__main__":
         controlnet = None
     else:
         controlnet = [
-            ControlNetModel.from_pretrained(model_id) for model_id in option.cnet
-        ]
-        generate_params["image"] = [
-            diffusers.utils.load_image(image) for image in option.cnimage
+            ControlNetModel.from_pretrained(model_id, torch_dtype=torch.float16)
+            for model_id in option.cnet
         ]
         generate_params["controlnet_conditioning_scale"] = option.cnscale
+        controlnet_conditioning_image = [
+            diffusers.utils.load_image(image) for image in option.cnimage
+        ]
+
+        if option.image is None:
+            generate_params["image"] = controlnet_conditioning_image
+        else:
+            generate_params[
+                "controlnet_conditioning_image"
+            ] = controlnet_conditioning_image
+            generate_params["width"] = option.width
+            generate_params["height"] = option.height
 
     if os.path.isfile(option.model):
         pipe = pipeline_class.from_ckpt(pretrained_model_link_or_path=option.model)
@@ -122,9 +132,17 @@ if __name__ == "__main__":
         )
 
     if controlnet:
-        pipe = StableDiffusionControlNetPipeline(
-            **pipe.components, controlnet=controlnet
-        )
+        if option.image is None:
+            pipe = StableDiffusionControlNetPipeline(
+                **pipe.components, controlnet=controlnet
+            )
+        else:
+            pipe = DiffusionPipeline.from_pretrained(
+                pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5",
+                custom_pipeline="stable_diffusion_controlnet_img2img",
+                **pipe.components,
+                controlnet=controlnet,
+            )
 
     if option.nsfw and pipe.safety_checker is not None:
         pipe.safety_checker = lambda images, **kwargs: (images, False)

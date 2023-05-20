@@ -2,6 +2,7 @@ import argparse
 import os
 
 import diffusers.utils
+import torch
 from diffusers import (
     ControlNetModel,
     StableDiffusionControlNetPipeline,
@@ -140,7 +141,8 @@ if __name__ == "__main__":
     img_count = len(os.listdir(outpath))
 
     while True:
-        out = pipe(**generate_params)
+        with torch.inference_mode():
+            out = pipe(**generate_params)
 
         if (
             option.nsfw is True

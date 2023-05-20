@@ -129,7 +129,7 @@ if __name__ == "__main__":
     if option.nsfw and pipe.safety_checker is not None:
         pipe.safety_checker = lambda images, **kwargs: (images, False)
 
-    pipe = pipe.to(torch_device="cuda")
+    pipe = pipe.to(torch_device="cuda", torch_dtype=torch.float16)
     pipe.enable_xformers_memory_efficient_attention()
 
     outpath = os.path.join(

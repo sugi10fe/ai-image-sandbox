@@ -73,6 +73,9 @@ def parse_option():
     parser.add_argument(
         "--cnguess", action="store_true", help="Enable ControlNet Guess Mode"
     )
+    parser.add_argument(
+        "--ti", action="extend", type=str, nargs="*", help="textual inversion to apply"
+    )
 
     option = parser.parse_args()
     if option.cnet is not None and (
@@ -147,6 +150,15 @@ if __name__ == "__main__":
                 **pipe.components,
                 controlnet=controlnet,
             )
+
+    if option.ti is not None:
+        for ti in option.ti:
+            if os.path.isfile(ti):
+                pipe.load_textual_inversion(
+                    ti, token=os.path.splitext(os.path.basename(ti))[0]
+                )
+            else:
+                pipe.load_textual_inversion(ti)
 
     if option.nsfw and pipe.safety_checker is not None:
         pipe.safety_checker = lambda images, **kwargs: (images, False)

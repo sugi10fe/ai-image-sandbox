@@ -28,4 +28,6 @@ if __name__ == "__main__":
 
     outpath = os.path.join("outputs/canny", os.path.basename(option.image))
     os.makedirs(outpath, exist_ok=True)
-    image.save(os.path.join(outpath, f"{option.low}-{option.high}.png"))
+    outpath = os.path.join(outpath, f"{option.low}-{option.high}.png")
+    image.save(outpath)
+    print(os.path.abspath(outpath))

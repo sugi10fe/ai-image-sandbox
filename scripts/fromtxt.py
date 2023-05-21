@@ -70,6 +70,9 @@ def parse_option():
         nargs="*",
         help="conditioning scale of ControlNet",
     )
+    parser.add_argument(
+        "--cnguess", action="store_true", help="Enable ControlNet Guess Mode"
+    )
 
     option = parser.parse_args()
     if option.cnet is not None and (
@@ -117,6 +120,7 @@ if __name__ == "__main__":
 
         if option.image is None:
             generate_params["image"] = controlnet_conditioning_image
+            generate_params["guess_mode"] = option.cnguess
         else:
             generate_params[
                 "controlnet_conditioning_image"

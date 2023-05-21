@@ -1,14 +1,23 @@
 import argparse
+import io
 import os
 
 import diffusers.utils
+import omegaconf
+import requests
+import safetensors.torch
 import torch
 from diffusers import (
+    AutoencoderKL,
     ControlNetModel,
     DiffusionPipeline,
     StableDiffusionControlNetPipeline,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionPipeline,
+)
+from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
+    convert_ldm_vae_checkpoint,
+    create_vae_diffusers_config,
 )
 
 
@@ -76,6 +85,7 @@ def parse_option():
     parser.add_argument(
         "--ti", action="extend", type=str, nargs="*", help="textual inversion to apply"
     )
+    parser.add_argument("--vae", type=str, nargs="?", help="vae checkpoint to apply")
 
     option = parser.parse_args()
     if option.cnet is not None and (
@@ -87,6 +97,13 @@ def parse_option():
         assert False
 
     return option
+
+
+def load_original_config():
+    # model_type = "v1"
+    config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+    original_config_file = io.BytesIO(requests.get(config_url).content)
+    return omegaconf.OmegaConf.load(original_config_file)
 
 
 if __name__ == "__main__":
@@ -137,6 +154,34 @@ if __name__ == "__main__":
         pipe = pipeline_class.from_pretrained(
             pretrained_model_name_or_path=option.model
         )
+
+    if option.vae is not None:
+        if os.path.isfile(option.vae):
+            if option.vae.endswith(".safetensors"):
+                checkpoint = safetensors.torch.load_file(option.vae)
+            else:
+                checkpoint = torch.load(option.vae)
+
+            while "state_dict" in checkpoint:
+                checkpoint = checkpoint["state_dict"]
+
+            checkpoint = {
+                f"first_stage_model.{key}": value for key, value in checkpoint.items()
+            }
+            # 512 is default
+            vae_config = create_vae_diffusers_config(
+                load_original_config(), image_size=512
+            )
+            converted_vae_checkpoint = convert_ldm_vae_checkpoint(
+                checkpoint, vae_config
+            )
+            vae = AutoencoderKL(**vae_config)
+            vae.load_state_dict(converted_vae_checkpoint)
+
+        else:
+            vae = AutoencoderKL.from_pretrained(option.vae)
+
+        pipe = pipeline_class(**dict(pipe.components, vae=vae))
 
     if controlnet:
         if option.image is None:

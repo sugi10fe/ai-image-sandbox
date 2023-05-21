@@ -86,6 +86,8 @@ def parse_option():
         "--ti", action="extend", type=str, nargs="*", help="textual inversion to apply"
     )
     parser.add_argument("--vae", type=str, nargs="?", help="vae checkpoint to apply")
+    parser.add_argument("--float32", action="store_true", help="use float32 to dtype")
+    parser.add_argument("--vae-tiling", action="store_true", help="enable vae tiling")
 
     option = parser.parse_args()
     if option.cnet is not None and (
@@ -130,7 +132,9 @@ if __name__ == "__main__":
         controlnet = None
     else:
         controlnet = [
-            ControlNetModel.from_pretrained(model_id, torch_dtype=torch.float16)
+            ControlNetModel.from_pretrained(
+                model_id, torch_dtype=torch.float32 if option.float32 else torch.float16
+            )
             for model_id in option.cnet
         ]
         generate_params["controlnet_conditioning_scale"] = option.cnscale
@@ -208,8 +212,13 @@ if __name__ == "__main__":
     if option.nsfw and pipe.safety_checker is not None:
         pipe.safety_checker = lambda images, **kwargs: (images, False)
 
-    pipe = pipe.to(torch_device="cuda", torch_dtype=torch.float16)
+    pipe = pipe.to(
+        torch_device="cuda",
+        torch_dtype=torch.float32 if option.float32 else torch.float16,
+    )
     pipe.enable_xformers_memory_efficient_attention()
+    if option.vae_tiling:
+        pipe.enable_vae_tiling()
 
     outpath = os.path.join(
         "outputs/fromtxt",

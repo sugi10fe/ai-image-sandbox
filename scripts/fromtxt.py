@@ -92,6 +92,7 @@ if __name__ == "__main__":
     generate_params = {
         "prompt": option.prompt,
         "negative_prompt": option.negative,
+        "guidance_scale": option.guidance,
     }
 
     if option.image is None:
@@ -104,7 +105,6 @@ if __name__ == "__main__":
         image.thumbnail((option.width, option.height))
         generate_params["image"] = image
         generate_params["strength"] = option.strength
-        generate_params["guidance_scale"] = option.guidance
 
     if option.cnet is None:
         controlnet = None

@@ -7,7 +7,7 @@ readme = "README.md"
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.10, <3.12"
 
 
 [tool.poetry.group.torch.dependencies]
@@ -40,6 +40,13 @@ pillow = "^9.5.0"
 opencv-python = "^4.7.0.72"
 numpy = "^1.24.3"
 
+
+
+[tool.poetry.group.anime-segmentation.dependencies]
+anime-segmentation = {path = "anime-segmentation"}
+scipy = "^1.10.1"
+kornia = "^0.6.12"
+timm = "^0.9.2"
 
 [tool.isort]
 profile = "black"

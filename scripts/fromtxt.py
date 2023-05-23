@@ -2,8 +2,12 @@ import argparse
 import io
 import os
 
+import anime_segmentation.train
 import diffusers.utils
+import huggingface_hub
+import numpy
 import omegaconf
+import PIL.Image
 import requests
 import safetensors.torch
 import torch
@@ -88,6 +92,9 @@ def parse_option():
     parser.add_argument("--vae", type=str, nargs="?", help="vae checkpoint to apply")
     parser.add_argument("--float32", action="store_true", help="use float32 to dtype")
     parser.add_argument("--vae-tiling", action="store_true", help="enable vae tiling")
+    parser.add_argument(
+        "--nobg", action="store_true", help="remove background by anime-seg"
+    )
 
     option = parser.parse_args()
     if option.cnet is not None and (
@@ -237,7 +244,63 @@ if __name__ == "__main__":
             or out.nsfw_content_detected is None
             or not out.nsfw_content_detected[0]
         ):
-            out.images[0].save(
+            image = out.images[0]
+
+            if option.nobg:
+                original_mask_size = max(image.size)
+                asmodel = anime_segmentation.train.AnimeSegmentation.try_load(
+                    "isnet_is",
+                    huggingface_hub.hf_hub_download("skytnt/anime-seg", "isnetis.ckpt"),
+                    "cuda",
+                    original_mask_size,
+                )
+                asmodel.eval()
+                asmodel.to("cuda", dtype=torch.float32)
+
+                # convert to [(0, x, y)]
+                # shprter side will be letterbox
+                image_to_mask = numpy.zeros(
+                    (original_mask_size, original_mask_size, 3), dtype=numpy.float32
+                )
+                image_to_mask[
+                    (original_mask_size - image.height)
+                    // 2 : (original_mask_size - image.height)
+                    // 2
+                    + image.height,
+                    (original_mask_size - image.width)
+                    // 2 : (original_mask_size - image.width)
+                    // 2
+                    + image.width,
+                ] = (
+                    numpy.array(image).astype(numpy.float32) / 255
+                )
+                image_to_mask = image_to_mask.transpose((2, 0, 1))
+                image_to_mask = torch.from_numpy(image_to_mask).unsqueeze(0)
+
+                # make mask
+                with torch.no_grad():
+                    mask = asmodel(image_to_mask.to("cuda", dtype=torch.float32))
+
+                    # convert [[(x, y)]] to x, y
+                    mask = mask[0][0]
+                    # remove letterbox
+                    mask = mask[
+                        (original_mask_size - image.height)
+                        // 2 : (original_mask_size - image.height)
+                        // 2
+                        + image.height,
+                        (original_mask_size - image.width)
+                        // 2 : (original_mask_size - image.width)
+                        // 2
+                        + image.width,
+                    ]
+                    mask = mask.cpu().numpy().clip(0, 1)
+
+                    image.putalpha(
+                        PIL.Image.fromarray((mask * 255).astype(numpy.uint8))
+                    )
+
+            image.save(
                 os.path.join(
                     outpath, f"{os.path.basename(option.model)} - {img_count:06}.png"
                 )

@@ -586,7 +586,7 @@ def gv1(
         } | ({} if "image" in image_parameters.keys() else {"guess_mode": cnguess})
 
     # init pipe and load model
-    pipe = pipeline_class(**load_pipeline_modules(model, ti))
+    pipe = pipeline_class(**load_pipeline_modules(model, merged_ti))
 
     # clip scheduler
     pipe.scheduler = ClippingScheduler(pipe.scheduler, prev_step, poststep)

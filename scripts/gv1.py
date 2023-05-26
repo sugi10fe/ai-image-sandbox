@@ -422,9 +422,15 @@ def gv1(
         image: source image
         prompt: positive prompt
         negative: negative prompt
+        step: num of inference steps
+        seed: fix seed to it
         guidance: higher guidance scale encourages to generate images that are closely linked to the text prompt
         width: width of output image
         height: height of output image
+        image: source image
+        prestep: num of inference step for `image` input
+        poststep: should be 0
+        strength: how much to transform the reference image
         model: model id in huggingface / path to checkpoint directory / path to checkpoint file
         nsfw: allow NSFW image
         cnet: ControlNet model id to apply
@@ -435,9 +441,7 @@ def gv1(
         vae: vae checkpoint to apply
         float32: use float32 to dtype
         vae_tiling: enable vae tiling
-        seed: fix seed to it
-        output_type: pil or latent
-        strength: how much to transform the reference image
+        output_type: should be `pil`
     """
 
     # validation
@@ -667,11 +671,6 @@ def call_by_args(fn: Callable):
             origin = typing.get_origin(annotation)
             type_args = typing.get_args(annotation)
 
-        if origin == Literal:
-            annotation = type(type_args[0])
-            origin = typing.get_origin(annotation)
-            type_args = typing.get_args(annotation)
-
         if origin is None:
             origin = annotation
             type_args = ()
@@ -683,6 +682,12 @@ def call_by_args(fn: Callable):
                 "type": type_args[0],
                 "action": "extend",
                 "nargs": "*" if is_optional else "+",
+            }
+        elif origin == Literal:
+            extra = {
+                "type": type(type_args[0]),
+                "choices": type_args,
+                "default": parameter.default,
             }
         elif is_optional:
             extra = {"type": origin, "nargs": "?", "default": parameter.default}

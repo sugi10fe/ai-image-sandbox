@@ -419,7 +419,6 @@ def gv1(
     execute inference steps
 
     Args:
-        image: source image
         prompt: positive prompt
         negative: negative prompt
         step: num of inference steps

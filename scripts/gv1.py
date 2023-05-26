@@ -389,6 +389,80 @@ class ClippingScheduler:
         )
 
 
+_pipeline_modules_cache = {}
+
+
+def load_pipeline_modules(model: str, ti: list[str] | None):
+    key = (model, ti)
+    if key in _pipeline_modules_cache.keys():
+        return _pipeline_modules_cache[key]
+
+    if (
+        model.endswith(".pt")
+        or model.endswith(".ckpt")
+        or model.endswith(".safetensors")
+    ):
+        pipe = StableDiffusionPipeline.from_ckpt(model)
+    else:
+        pipe = StableDiffusionPipeline.from_pretrained(model)
+
+    for ti_model in or_else(ti, []):
+        if os.path.isfile(ti_model):
+            pipe.load_textual_inversion(
+                ti_model, token=os.path.splitext(os.path.basename(ti_model))[0]
+            )
+        else:
+            pipe.load_textual_inversion(ti_model)
+
+    modules = pipe.components
+    _pipeline_modules_cache[key] = modules
+    return modules
+
+
+_controlnet_model_cache = {}
+
+
+def load_controlnet_model(model: str, torch_dtype: torch.dtype):
+    key = (model, torch_dtype)
+    if key in _controlnet_model_cache.keys():
+        return _controlnet_model_cache[key]
+
+    instance = ControlNetModel.from_pretrained(model, torch_dtype=torch_dtype)
+    _controlnet_model_cache[key] = instance
+    return instance
+
+
+_vae_cache = {}
+
+
+def load_vae(vae: str):
+    key = vae
+    if key in _vae_cache.keys():
+        return _vae_cache[key]
+
+    if os.path.isfile(vae):
+        if vae.endswith(".safetensors"):
+            checkpoint = safetensors.torch.load_file(vae)
+        else:
+            checkpoint = torch.load(vae)
+
+        checkpoint = {
+            f"first_stage_model.{key}": value for key, value in checkpoint.items()
+        }
+
+        checkpoint = diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_vae_checkpoint(
+            checkpoint, _vae_config
+        )
+        vae_module = AutoencoderKL(**_vae_config)
+        vae_module.load_state_dict(checkpoint)
+
+    else:
+        vae_module = AutoencoderKL.from_pretrained(vae)
+
+    _vae_cache[key] = vae_module
+    return vae_module
+
+
 def gv1(
     prompt: str | None = None,
     negative: str | None = None,
@@ -499,7 +573,7 @@ def gv1(
         controlnet_inference_parameters = {}
     else:
         controlnet = [
-            ControlNetModel.from_pretrained(
+            load_controlnet_model(
                 model_id, torch_dtype=torch.float32 if float32 else torch.float16
             )
             for model_id in merged_cnet
@@ -512,40 +586,14 @@ def gv1(
         } | ({} if "image" in image_parameters.keys() else {"guess_mode": cnguess})
 
     # init pipe and load model
-    if (
-        model.endswith(".pt")
-        or model.endswith(".ckpt")
-        or model.endswith(".safetensors")
-    ):
-        pipe = pipeline_class.from_ckpt(model)
-    else:
-        pipe = pipeline_class.from_pretrained(model)
+    pipe = pipeline_class(**load_pipeline_modules(model, ti))
 
     # clip scheduler
     pipe.scheduler = ClippingScheduler(pipe.scheduler, prev_step, poststep)
 
     # replace vae
     if vae is not None:
-        if os.path.isfile(vae):
-            if vae.endswith(".safetensors"):
-                checkpoint = safetensors.torch.load_file(vae)
-            else:
-                checkpoint = torch.load(vae)
-
-            checkpoint = {
-                f"first_stage_model.{key}": value for key, value in checkpoint.items()
-            }
-
-            checkpoint = diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_vae_checkpoint(
-                checkpoint, _vae_config
-            )
-            vae_module = AutoencoderKL(**_vae_config)
-            vae_module.load_state_dict(checkpoint)
-
-        else:
-            vae_module = AutoencoderKL.from_pretrained(vae)
-
-        pipe.vae = vae_module
+        pipe.vae = load_vae(vae)
 
     # apply ControlNet to pipe
     if controlnet is not None:
@@ -561,16 +609,6 @@ def gv1(
             pipe = StableDiffusionControlNetPipeline(
                 **pipe.components, controlnet=controlnet
             )
-
-    # load textual-inversions
-    if merged_ti is not None:
-        for ti_model in merged_ti:
-            if os.path.isfile(ti_model):
-                pipe.load_textual_inversion(
-                    ti_model, token=os.path.splitext(os.path.basename(ti_model))[0]
-                )
-            else:
-                pipe.load_textual_inversion(ti_model)
 
     # prepare weighted prompts
     compel = Compel(tokenizer=pipe.tokenizer, text_encoder=pipe.text_encoder)

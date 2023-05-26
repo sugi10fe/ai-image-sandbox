@@ -31,7 +31,7 @@ from omegaconf import OmegaConf
 from PIL.Image import Image
 from PIL.PngImagePlugin import PngInfo
 
-_vae_config = diffusers.pipelines.stable_diffusion.convert_from_ckpt.create_vae_diffusers_config(
+VAE_CONFIG = diffusers.pipelines.stable_diffusion.convert_from_ckpt.create_vae_diffusers_config(
     OmegaConf.load(
         io.BytesIO(
             requests.get(
@@ -42,6 +42,9 @@ _vae_config = diffusers.pipelines.stable_diffusion.convert_from_ckpt.create_vae_
     # 512 is default
     image_size=512,
 )
+
+OUTDIR = "outputs/gv1"
+os.makedirs(OUTDIR, exist_ok=True)
 
 T = TypeVar("T")
 
@@ -451,9 +454,9 @@ def load_vae(vae: str):
         }
 
         checkpoint = diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_vae_checkpoint(
-            checkpoint, _vae_config
+            checkpoint, VAE_CONFIG
         )
-        vae_module = AutoencoderKL(**_vae_config)
+        vae_module = AutoencoderKL(**VAE_CONFIG)
         vae_module.load_state_dict(checkpoint)
 
     else:
@@ -487,7 +490,7 @@ def gv1(
     vae: str | None = None,
     float32: bool = False,
     vae_tiling: bool = False,
-    output_type: Literal["pil", "latent"] = "pil",
+    output_type: Literal["pil", "latent", "info", "args"] = "pil",
 ):
     r"""
     execute inference steps
@@ -514,7 +517,7 @@ def gv1(
         vae: vae checkpoint to apply
         float32: use float32 to dtype
         vae_tiling: enable vae tiling
-        output_type: should be `pil`
+        output_type: `pil` to output image / `info` to output gv1 parameters of image / `args` to output gv1 parameters of image by argument style
     """
 
     # validation
@@ -525,6 +528,8 @@ def gv1(
         assert len(cnet) == len(cnscale)
     if width is not None:
         assert height is not None
+    if output_type in ("info", "args"):
+        assert image is not None
 
     # select image size
     size = {} if width is None else {"width": width, "height": height}
@@ -535,6 +540,17 @@ def gv1(
         image_parameters = {}
         prev_image = None
         prev_step = 0
+    elif output_type == "info":
+        text = getattr(PIL.Image.open(image), "text", {})
+        print(
+            {
+                k: "<bytes>" if k.endswith(".content") else v
+                for k, v in text.items()
+                if k.startswith("gv1.")
+            }
+        )
+
+        return
     else:
         prev_image = InferedImage.load(image, prestep, step + poststep)
 
@@ -625,9 +641,7 @@ def gv1(
         pipe.enable_vae_tiling()
 
     # make path to save image
-    outdir = "outputs/gv1"
-    os.makedirs(outdir, exist_ok=True)
-    img_count = len(os.listdir(outdir))
+    img_count = len(os.listdir(OUTDIR))
 
     # inference loop
     for s in infinite_randoms() if seed is None else [seed]:
@@ -679,7 +693,7 @@ def gv1(
                 float32=float32,
                 vae_tiling=vae_tiling,
                 result=out.images[0],
-            ).save(os.path.join(outdir, f"{img_count:09}.png"))
+            ).save(os.path.join(OUTDIR, f"{img_count:09}.png"))
             img_count += 1
 
 

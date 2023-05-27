@@ -317,9 +317,11 @@ class InferedImage:
         infered = cls.load_from_pngtext(
             getattr(image, "text", None), "gv1", prestep, poststep
         )
+
+        image = PIL.ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+
         if infered is None:
-            image = PIL.ImageOps.exif_transpose(image)
-            image = image.convert("RGB")
             if isinstance(path_or_img, str):
                 _image_cache[path_or_img] = image
             return image
@@ -472,7 +474,8 @@ _pipeline_modules_cache = {}
 
 
 def load_pipeline_modules(model: str, ti: list[str] | None):
-    key = (model, ti)
+    ti.sort()
+    key = (model, *or_else(ti, []))
     if key in _pipeline_modules_cache.keys():
         return _pipeline_modules_cache[key]
 
@@ -720,19 +723,23 @@ def gv1(
 
     # merge list parameters
     current_cnimage = [InferedImage.load(p) for p in or_else(cnimage, [])]
-    if cnet is not None and cninit == "add" and isinstance(prev_image, InferedImage):
-        merged_cnet = cnet + or_else(prev_image.cnet, [])
-        merged_cnimage = current_cnimage + or_else(prev_image.cnimage, [])
-        merged_cnscale = cnscale + or_else(prev_image.cnscale, [])
-    else:
-        merged_cnet = cnet
-        merged_cnimage = current_cnimage
-        merged_cnscale = cnscale
+    merged_cnet = cnet
+    merged_cnimage = current_cnimage
+    merged_cnscale = cnscale
+    if cninit == "add" and isinstance(prev_image, InferedImage):
+        merged_cnet = or_else(cnet, []) + or_else(prev_image.cnet, [])
+        merged_cnimage = or_else(current_cnimage, []) + or_else(prev_image.cnimage, [])
+        merged_cnscale = or_else(cnscale, []) + or_else(prev_image.cnscale, [])
+        if len(merged_cnet) == 0:
+            merged_cnet = None
+            merged_cnimage = None
+            merged_cnscale = None
 
-    if ti is not None and tiinit == "add" and isinstance(prev_image, InferedImage):
-        merged_ti = ti + or_else(prev_image.ti, [])
-    else:
-        merged_ti = ti
+    merged_ti = ti
+    if tiinit == "add" and isinstance(prev_image, InferedImage):
+        merged_ti = or_else(ti, []) + or_else(prev_image.ti, [])
+    if len(merged_ti) == 0:
+        merged_ti = None
 
     # prepare ControlNet
     if merged_cnet is None:
@@ -748,7 +755,10 @@ def gv1(
         controlnet_inference_parameters = {
             "controlnet_conditioning_image"
             if "image" in image_parameters.keys()
-            else "image": [i.result for i in merged_cnimage],
+            else "image": [
+                i.result("pil") if isinstance(i, InferedImage) else i
+                for i in merged_cnimage
+            ],
             "controlnet_conditioning_scale": merged_cnscale,
         } | ({} if "image" in image_parameters.keys() else {"guess_mode": cnguess})
 
@@ -839,6 +849,7 @@ def gv1(
                 if isinstance(prev_image, InferedImage)
                 else 0,
                 poststep=0,
+                i2i=i2i,
                 strength=strength,
                 model=model,
                 nsfw=nsfw,
@@ -848,6 +859,7 @@ def gv1(
                 cnguess=cnguess,
                 ti=merged_ti,
                 vae=vae,
+                scheduler=scheduler,
                 float32=float32,
                 vae_tiling=vae_tiling,
                 pil=out.images[0],

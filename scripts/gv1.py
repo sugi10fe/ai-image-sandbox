@@ -43,7 +43,7 @@ VAE_CONFIG = diffusers.pipelines.stable_diffusion.convert_from_ckpt.create_vae_d
     image_size=512,
 )
 
-OUTDIR = "outputs/gv1"
+OUTDIR = os.path.join("outputs", "gv1")
 os.makedirs(OUTDIR, exist_ok=True)
 
 T = TypeVar("T")
@@ -82,7 +82,7 @@ class InferedImage:
         vae: str | None,
         float32: bool,
         vae_tiling: bool,
-        result: Image | torch.FloatTensor,
+        pil: Image | None = None,
     ):
         self.prompt = prompt
         self.negative = negative
@@ -105,7 +105,7 @@ class InferedImage:
         self.vae = vae
         self.float32 = float32
         self.vae_tiling = vae_tiling
-        self.result = result
+        self.pil = pil
 
     @property
     def sum_of_step(self):
@@ -159,10 +159,14 @@ class InferedImage:
         add_itxt("vae_tiling", image.vae_tiling)
 
     def save(self, path: str):
-        assert isinstance(self.result, Image)
+        pil = self.pil
+        if pil is None:
+            pil = PIL.Image.new("L", (1, 1))
+
         pnginfo = PngInfo()
         type(self).apply_to_pnginfo(pnginfo, "gv1", self)
-        self.result.save(path, pnginfo=pnginfo)
+
+        pil.save(path, pnginfo=pnginfo)
 
     @classmethod
     def load_from_pngtext(
@@ -271,30 +275,6 @@ class InferedImage:
             vae=vae,
             float32=float32,
             vae_tiling=vae_tiling,
-            result=gv1(
-                prompt=prompt,
-                negative=negative,
-                step=step,
-                seed=seed,
-                guidance=guidance,
-                width=width,
-                height=height,
-                image=image,
-                prestep=prestep,
-                poststep=poststep,
-                strength=strength,
-                model=model,
-                nsfw=nsfw,
-                cnet=cnet,
-                cnimage=cnimage,
-                cnscale=cnscale,
-                cnguess=cnguess,
-                ti=ti,
-                vae=vae,
-                float32=float32,
-                vae_tiling=vae_tiling,
-                output_type="latent",
-            ),
         )
 
     @classmethod
@@ -322,6 +302,41 @@ class InferedImage:
             return image
 
         return infered
+
+    def result(self, output_type: Literal["pil", "latent"]):
+        return gv1(
+            prompt=self.prompt,
+            negative=self.negative,
+            step=self.step,
+            seed=self.seed,
+            guidance=self.guidance,
+            width=self.width,
+            height=self.height,
+            image=self.image,
+            prestep=self.prestep,
+            poststep=self.poststep,
+            strength=self.strength,
+            model=self.model,
+            nsfw=self.nsfw,
+            cnet=self.cnet,
+            cnimage=self.cnimage,
+            cnscale=self.cnscale,
+            cnguess=self.cnguess,
+            ti=self.ti,
+            vae=self.vae,
+            float32=self.float32,
+            vae_tiling=self.vae_tiling,
+            output_type=output_type,
+        )
+
+    @property
+    def parameters(self):
+        parameters = inspect.signature(gv1).parameters
+        return {
+            k: v
+            for k, v in vars(self).items()
+            if k != "pil" and v != parameters[k].default
+        }
 
 
 class ClippingScheduler:
@@ -490,7 +505,9 @@ def gv1(
     vae: str | None = None,
     float32: bool = False,
     vae_tiling: bool = False,
-    output_type: Literal["pil", "latent", "info", "args"] = "pil",
+    output_type: Literal["png", "pil", "latent"] = "png",
+    info: bool = False,
+    args: bool = False,
 ):
     r"""
     execute inference steps
@@ -517,7 +534,9 @@ def gv1(
         vae: vae checkpoint to apply
         float32: use float32 to dtype
         vae_tiling: enable vae tiling
-        output_type: `pil` to output image / `info` to output gv1 parameters of image / `args` to output gv1 parameters of image by argument style
+        output_type: `png` to output png
+        info: output gv1 parameters of `image`
+        args: output gv1 parameters of `image` by argument style and argument images
     """
 
     # validation
@@ -528,7 +547,8 @@ def gv1(
         assert len(cnet) == len(cnscale)
     if width is not None:
         assert height is not None
-    if output_type in ("info", "args"):
+    if info or args:
+        assert not (info and args)
         assert image is not None
 
     # select image size
@@ -540,7 +560,7 @@ def gv1(
         image_parameters = {}
         prev_image = None
         prev_step = 0
-    elif output_type == "info":
+    elif info:
         text = getattr(PIL.Image.open(image), "text", {})
         print(
             {
@@ -549,6 +569,41 @@ def gv1(
                 if k.startswith("gv1.")
             }
         )
+
+        return
+    elif args:
+        prev_image = InferedImage.load(image, prestep, step + poststep)
+
+        dirname = os.path.join(OUTDIR, f"{len(os.listdir(OUTDIR)):09}")
+
+        def quote(v):
+            result = str(v)
+            return f'"{result}"' if " " in result else result
+
+        arg_list = [
+            f"--{k} {quote(v)}"
+            for k, v in prev_image.parameters.items()
+            if not k in ("image", "cnimage")
+        ]
+        images = {}
+
+        if prev_image.image is not None:
+            filename = os.path.join(dirname, "image.png")
+            arg_list.append(f"--image {quote(filename)}")
+            images[filename] = prev_image.image
+
+        if prev_image.cnimage is not None:
+            for i, v in enumerate(prev_image.cnimage):
+                filename = os.path.join(dirname, f"cn{i}.png")
+                arg_list.append(f"--cnimage {quote(filename)}")
+                images[filename] = v
+
+        if len(images) > 0:
+            os.makedirs(dirname)
+            for k, v in images.items():
+                v.save(k)
+
+        print(" ".join(arg_list))
 
         return
     else:
@@ -564,7 +619,7 @@ def gv1(
             prev_step = 0
         else:
             pipeline_class = StableDiffusionPipeline
-            image_parameters = {"latents": prev_image.result}
+            image_parameters = {"latents": prev_image.result("latent")}
             prev_step = prev_image.sum_of_step
 
     # merge list parameters
@@ -652,7 +707,7 @@ def gv1(
                 num_inference_steps=step,
                 guidance_scale=guidance,
                 generator=torch.manual_seed(s),
-                output_type=output_type,
+                output_type="latent" if output_type == "latent" else "pil",
                 **size,
                 **controlnet_inference_parameters,
                 **image_parameters,
@@ -667,7 +722,10 @@ def gv1(
         if output_type == "latent":
             return out.images if is_safe else None
 
-        if output_type == "pil" and is_safe:
+        if output_type == "pil":
+            return out.images[0] if is_safe else None
+
+        if is_safe:
             InferedImage(
                 prompt=prompt,
                 negative=negative,
@@ -692,7 +750,7 @@ def gv1(
                 vae=vae,
                 float32=float32,
                 vae_tiling=vae_tiling,
-                result=out.images[0],
+                pil=out.images[0],
             ).save(os.path.join(OUTDIR, f"{img_count:09}.png"))
             img_count += 1
 
@@ -726,7 +784,7 @@ def call_by_args(fn: Callable):
             origin = annotation
             type_args = ()
 
-        if parameter.default == False:
+        if origin == bool and parameter.default == False:
             extra = {"action": "store_true"}
         elif origin == list:
             extra = {

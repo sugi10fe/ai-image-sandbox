@@ -144,6 +144,7 @@ class InferedImage:
         add_itxt("width", image.width)
         add_itxt("height", image.height)
         cls.apply_to_pnginfo(pnginfo, f"{prefix}.image", image.image)
+        add_itxt("poststep", image.poststep)
         add_itxt("strength", image.strength)
         add_itxt("model", image.model)
         add_itxt("nsfw", image.nsfw)
@@ -160,6 +161,8 @@ class InferedImage:
 
     def save(self, path: str):
         pil = self.pil
+        if pil is None:
+            pil = self.result("pil")
         if pil is None:
             pil = PIL.Image.new("L", (1, 1))
 
@@ -239,19 +242,23 @@ class InferedImage:
         float32 = fetch_bool("float32")
         vae_tiling = fetch_bool("vae_tiling")
 
-        step_of_image = image.sum_of_step if isinstance(image, InferedImage) else 0
+        prestep_of_image = image.sum_of_step if isinstance(image, InferedImage) else 0
 
         if prestep is None:
             step = fetch_int("step")
         else:
-            step = prestep - step_of_image
+            step = prestep - prestep_of_image
             if step <= 0:
                 return image
 
-        subimage = image
-        while isinstance(subimage, InferedImage):
-            subimage.poststep += step
-            subimage = subimage.image
+        if poststep is None:
+            poststep_of_image = or_else(fetch_int("poststep"), 0)
+        else:
+            poststep_of_image = poststep
+            subimage = image
+            while isinstance(subimage, InferedImage):
+                subimage.poststep += step
+                subimage = subimage.image
 
         return InferedImage(
             prompt=prompt,
@@ -262,8 +269,8 @@ class InferedImage:
             width=width,
             height=height,
             image=image,
-            prestep=step_of_image,
-            poststep=poststep,
+            prestep=prestep_of_image,
+            poststep=poststep_of_image,
             strength=strength,
             model=model,
             nsfw=nsfw,
@@ -280,18 +287,14 @@ class InferedImage:
     @classmethod
     def load(
         cls,
-        path_or_img_or_infered: Union[str, Image, "InferedImage"],
+        path_or_img: Union[str, Image],
         prestep: int | None = None,
-        poststep: int = 0,
+        poststep: int | None = None,
     ):
-        if isinstance(path_or_img_or_infered, InferedImage):
-            assert prestep is None or path_or_img_or_infered.prestep == prestep
-            assert path_or_img_or_infered.poststep == poststep
-            return path_or_img_or_infered
-        elif isinstance(path_or_img_or_infered, str):
-            image = PIL.Image.open(path_or_img_or_infered)
+        if isinstance(path_or_img, str):
+            image = PIL.Image.open(path_or_img)
         else:
-            image = path_or_img_or_infered
+            image = path_or_img
 
         infered = cls.load_from_pngtext(
             getattr(image, "text", None), "gv1", prestep, poststep
@@ -491,7 +494,7 @@ def gv1(
     height: int | None = None,
     image: str | Image | InferedImage | None = None,
     prestep: int | None = None,
-    poststep: int = 0,
+    poststep: int | None = None,
     strength: float = 0.8,
     model: str | None = None,
     nsfw: bool = False,
@@ -554,6 +557,9 @@ def gv1(
     # select image size
     size = {} if width is None else {"width": width, "height": height}
 
+    # select num of poststep
+    post_step = 0 if poststep is None else poststep
+
     # select pipeline by --image
     if image is None:
         pipeline_class = StableDiffusionPipeline
@@ -572,7 +578,8 @@ def gv1(
 
         return
     elif args:
-        prev_image = InferedImage.load(image, prestep, step + poststep)
+        # if poststep is omitted, output saved poststep
+        prev_image = InferedImage.load(image, prestep, poststep)
 
         dirname = os.path.join(OUTDIR, f"{len(os.listdir(OUTDIR)):09}")
 
@@ -607,7 +614,7 @@ def gv1(
 
         return
     else:
-        prev_image = InferedImage.load(image, prestep, step + poststep)
+        prev_image = InferedImage.load(image, prestep, step + post_step)
 
         if isinstance(prev_image, Image):
             print(
@@ -660,7 +667,7 @@ def gv1(
     pipe = pipeline_class(**load_pipeline_modules(model, merged_ti))
 
     # clip scheduler
-    pipe.scheduler = ClippingScheduler(pipe.scheduler, prev_step, poststep)
+    pipe.scheduler = ClippingScheduler(pipe.scheduler, prev_step, post_step)
 
     # replace vae
     if vae is not None:

@@ -3,7 +3,6 @@ import distutils.util
 import inspect
 import io
 import os
-import sys
 import time
 import typing
 from types import NoneType, UnionType

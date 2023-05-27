@@ -17,6 +17,7 @@ import requests
 import safetensors.torch
 import torch
 import torch.utils
+import torchvision.transforms.functional
 from compel import Compel
 from diffusers import (
     AutoencoderKL,
@@ -27,6 +28,7 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionPipeline,
 )
+from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from omegaconf import OmegaConf
 from PIL.Image import Image
 from PIL.PngImagePlugin import PngInfo
@@ -307,8 +309,9 @@ class InferedImage:
         poststep: int | None = None,
     ):
         if isinstance(path_or_img, str):
-            if path_or_img in _image_cache.keys():
-                return _image_cache[path_or_img]
+            cache_key = (path_or_img, prestep, poststep)
+            if cache_key in _image_cache.keys():
+                return _image_cache[cache_key]
 
             image = PIL.Image.open(path_or_img)
         else:
@@ -323,12 +326,12 @@ class InferedImage:
 
         if infered is None:
             if isinstance(path_or_img, str):
-                _image_cache[path_or_img] = image
+                _image_cache[cache_key] = image
             return image
 
         infered.pil = image
         if isinstance(path_or_img, str):
-            _image_cache[path_or_img] = infered
+            _image_cache[cache_key] = infered
 
         return infered
 
@@ -394,7 +397,7 @@ SchedulersLiteral = Literal["DPM++Karras"]
 SCHEDULERS_INITS = {"DPM++Karras": init_dpmsolver("dpmsolver++", True)}
 
 
-class ClippingScheduler:
+class ClippingScheduler(SchedulerMixin):
     def __init__(self, original, prestep: int, poststep: int):
         self.original = original
         self.prestep = prestep
@@ -698,16 +701,24 @@ def gv1(
         if i2i:
             pipeline_class = StableDiffusionImg2ImgPipeline
             image_parameters = {
-                "image": prev_image.result("pil")
-                if isinstance(prev_image, InferedImage)
-                else prev_image,
+                "image": (
+                    prev_image.result("pil")
+                    if isinstance(prev_image, InferedImage)
+                    else prev_image
+                ).resize((width, height)),
                 "strength": strength,
             }
             prev_step = 0
         else:
             assert isinstance(prev_image, InferedImage)
             pipeline_class = StableDiffusionPipeline
-            image_parameters = {"latents": prev_image.result("latent")}
+            image_parameters = {
+                "latents": torchvision.transforms.functional.resize(
+                    prev_image.result("latent"),
+                    (width // 8, height // 8),
+                    antialias=True,
+                )
+            }
             prev_step = prev_image.sum_of_step
 
     # select image size

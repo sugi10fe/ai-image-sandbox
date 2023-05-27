@@ -23,6 +23,7 @@ from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     DiffusionPipeline,
+    DPMSolverMultistepScheduler,
     StableDiffusionControlNetPipeline,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionPipeline,
@@ -342,6 +343,23 @@ class InferedImage:
         }
 
 
+def init_dpmsolver(
+    algorithm_type: Literal["dpmsolver", "dpmsolver++", "deis"], use_karras: bool
+):
+    def initializer(config):
+        solver = DPMSolverMultistepScheduler.from_config(
+            config | {"algorithm_type": algorithm_type}
+        )
+        solver.use_karras_sigmas = use_karras
+        return solver
+
+    return initializer
+
+
+SchedulersLiteral = Literal["DPM++Karras"]
+SCHEDULERS_INITS = {"DPM++Karras": init_dpmsolver("dpmsolver++", True)}
+
+
 class ClippingScheduler:
     def __init__(self, original, prestep: int, poststep: int):
         self.original = original
@@ -506,6 +524,7 @@ def gv1(
     ti: list[str] | None = None,
     tiinit: Literal["add", "replace"] = "add",
     vae: str | None = None,
+    scheduler: SchedulersLiteral | None = None,
     float32: bool = False,
     vae_tiling: bool = False,
     output_type: Literal["png", "pil", "latent"] = "png",
@@ -535,6 +554,7 @@ def gv1(
         cnguess: enable ControlNet guess mode
         ti: textual inversion checkpoint to apply
         vae: vae checkpoint to apply
+        scheduler: scheduler name to use
         float32: use float32 to dtype
         vae_tiling: enable vae tiling
         output_type: `png` to output png
@@ -665,6 +685,10 @@ def gv1(
 
     # init pipe and load model
     pipe = pipeline_class(**load_pipeline_modules(model, merged_ti))
+
+    # replace scheduler
+    if scheduler is not None:
+        pipe.scheduler = SCHEDULERS_INITS[scheduler](pipe.scheduler.config)
 
     # clip scheduler
     pipe.scheduler = ClippingScheduler(pipe.scheduler, prev_step, post_step)

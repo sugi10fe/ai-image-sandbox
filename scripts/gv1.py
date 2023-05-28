@@ -715,7 +715,6 @@ def gv1(
         if inherit_only:
             pipeline_class = StableDiffusionPipeline
             image_parameters = {}
-            prev_image = None
             prev_step = or_else(prestep, 0)
         elif i2i:
             pipeline_class = StableDiffusionImg2ImgPipeline
@@ -767,6 +766,9 @@ def gv1(
         merged_ti = or_else(ti, []) + or_else(prev_image.ti, [])
     if merged_ti is not None and len(merged_ti) == 0:
         merged_ti = None
+
+    if inherit_only:
+        prev_image = None
 
     # prepare ControlNet
     if merged_cnet is None:

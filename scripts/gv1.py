@@ -321,7 +321,7 @@ class InferedImage:
             image = path_or_img
 
         infered = cls.load_from_pngtext(
-            getattr(image, "text", None), "gv1", prestep, poststep
+            getattr(image, "text", {}), "gv1", prestep, poststep
         )
 
         image = PIL.ImageOps.exif_transpose(image)

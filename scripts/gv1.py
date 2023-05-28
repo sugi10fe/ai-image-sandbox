@@ -705,8 +705,12 @@ def gv1(
             width = or_else(width, prev_image.width)
             height = or_else(height, prev_image.height)
             model = or_else(model, prev_image.model)
-            vae = or_else(vae, prev_image.vae)
-            scheduler = or_else(scheduler, prev_image.scheduler)
+            vae = None if vae == "default" else or_else(vae, prev_image.vae)
+            scheduler = (
+                None
+                if scheduler == "default"
+                else or_else(scheduler, prev_image.scheduler)
+            )
 
         if inherit_only:
             pipeline_class = StableDiffusionPipeline

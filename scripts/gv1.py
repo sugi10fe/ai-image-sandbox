@@ -833,7 +833,7 @@ def gv1(
     # memory optimization
     pipe = pipe.to("cuda", torch_dtype=torch.float32 if float32 else torch.float16)
     if vae_tiling:
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
 
     # make path to save image
     img_count = len(os.listdir(OUTDIR))

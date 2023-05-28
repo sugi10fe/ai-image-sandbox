@@ -12,6 +12,9 @@ def parse_option():
     parser.add_argument("-I", "--image", type=str, help="source image")
     parser.add_argument("-L", "--low", type=int, default=100, help="low threshold")
     parser.add_argument("-H", "--high", type=int, default=200, help="high threshold")
+    parser.add_argument(
+        "-S, --scale", type=float, default=None, help="get resized canny"
+    )
 
     return parser.parse_args()
 
@@ -20,6 +23,11 @@ if __name__ == "__main__":
     option = parse_option()
 
     image = diffusers.utils.load_image(option.image)
+    if option.scale is None:
+        scale_modifier = ""
+    else:
+        image.resize((image.width * option.scale, image.height * option.scale))
+        scale_modifier = f"x${option.scale}"
     image = numpy.array(image)
     image = cv2.Canny(image, option.low, option.high)
     image = image[:, :, None]
@@ -28,6 +36,6 @@ if __name__ == "__main__":
 
     outpath = os.path.join("outputs/canny", os.path.basename(option.image))
     os.makedirs(outpath, exist_ok=True)
-    outpath = os.path.join(outpath, f"{option.low}-{option.high}.png")
+    outpath = os.path.join(outpath, f"{option.low}-{option.high}{scale_modifier}.png")
     image.save(outpath)
     print(os.path.abspath(outpath))

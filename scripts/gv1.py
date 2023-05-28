@@ -210,15 +210,18 @@ class InferedImage:
         def fetch_image(
             field: str, prestep: int | None = None, poststep: int | None = None
         ):
-            content = fetch_str("content")
+            content = fetch_str(f"{field}.content")
             if content is None:
                 return cls.load_from_pngtext(
                     text, f"{prefix}.{field}", prestep, poststep
                 )
             else:
                 return PIL.Image.frombytes(
-                    fetch_str("mode"),
-                    (fetch_int("width"), fetch_int("height")),
+                    fetch_str(f"{field}.mode"),
+                    (
+                        fetch_int(f"{field}.width"),
+                        fetch_int(f"{field}.height"),
+                    ),
                     bytes(content, "latin-1"),
                 )
 
@@ -340,30 +343,34 @@ class InferedImage:
         if output is not None:
             return output
 
+        args = {
+            "prompt": self.prompt,
+            "negative": self.negative,
+            "step": self.step,
+            "seed": self.seed,
+            "guidance": self.guidance,
+            "width": self.width,
+            "height": self.height,
+            "image": self.image,
+            "prestep": self.prestep,
+            "poststep": self.poststep,
+            "i2i": self.i2i,
+            "strength": self.strength,
+            "model": self.model,
+            "nsfw": self.nsfw,
+            "cnet": self.cnet,
+            "cnimage": self.cnimage,
+            "cnscale": self.cnscale,
+            "cnguess": self.cnguess,
+            "ti": self.ti,
+            "vae": self.vae,
+            "scheduler": self.scheduler,
+            "float32": self.float32,
+            "vae_tiling": self.vae_tiling,
+        }
+
         output = gv1(
-            prompt=self.prompt,
-            negative=self.negative,
-            step=self.step,
-            seed=self.seed,
-            guidance=self.guidance,
-            width=self.width,
-            height=self.height,
-            image=self.image,
-            prestep=self.prestep,
-            poststep=self.poststep,
-            i2i=self.i2i,
-            strength=self.strength,
-            model=self.model,
-            nsfw=self.nsfw,
-            cnet=self.cnet,
-            cnimage=self.cnimage,
-            cnscale=self.cnscale,
-            cnguess=self.cnguess,
-            ti=self.ti,
-            vae=self.vae,
-            scheduler=self.scheduler,
-            float32=self.float32,
-            vae_tiling=self.vae_tiling,
+            **{k: v for k, v in args.items() if v is not None},
             output_type=output_type,
         )
 
@@ -376,7 +383,7 @@ class InferedImage:
         return {
             k: v
             for k, v in vars(self).items()
-            if k != "pil" and v != parameters[k].default
+            if k not in ("pil", "latent") and v != parameters[k].default
         }
 
 
@@ -477,7 +484,8 @@ _pipeline_modules_cache = {}
 
 
 def load_pipeline_modules(model: str, ti: list[str] | None):
-    ti.sort()
+    if ti is not None:
+        ti.sort()
     key = (model, *or_else(ti, []))
     if key in _pipeline_modules_cache.keys():
         return _pipeline_modules_cache[key]
@@ -721,9 +729,6 @@ def gv1(
             }
             prev_step = prev_image.sum_of_step
 
-    # select image size
-    size = {} if width is None else {"width": width, "height": height}
-
     # merge prompts
     def merge_prompt(*prompts: str):
         result = ", ".join([p for p in prompts if p is not None])
@@ -749,7 +754,7 @@ def gv1(
     merged_ti = ti
     if tiinit == "add" and isinstance(prev_image, InferedImage):
         merged_ti = or_else(ti, []) + or_else(prev_image.ti, [])
-    if len(merged_ti) == 0:
+    if merged_ti is not None and len(merged_ti) == 0:
         merged_ti = None
 
     # prepare ControlNet
@@ -772,6 +777,13 @@ def gv1(
             ],
             "controlnet_conditioning_scale": merged_cnscale,
         } | ({} if "image" in image_parameters.keys() else {"guess_mode": cnguess})
+
+    # select image size
+    size = (
+        {}
+        if width is None or (i2i and merged_cnet is None)
+        else {"width": width, "height": height}
+    )
 
     # init pipe and load model
     pipe = pipeline_class(**load_pipeline_modules(model, merged_ti))

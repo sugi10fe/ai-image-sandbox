@@ -539,6 +539,9 @@ def load_vae(vae: str):
         else:
             checkpoint = torch.load(vae)
 
+        while "state_dict" in checkpoint:
+            checkpoint = checkpoint["state_dict"]
+
         checkpoint = {
             f"first_stage_model.{key}": value for key, value in checkpoint.items()
         }

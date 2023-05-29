@@ -13,7 +13,7 @@ def parse_option():
     parser.add_argument("-L", "--low", type=int, default=100, help="low threshold")
     parser.add_argument("-H", "--high", type=int, default=200, help="high threshold")
     parser.add_argument(
-        "-S, --scale", type=float, default=None, help="get resized canny"
+        "-S", "--scale", type=float, default=1, help="get resized canny"
     )
 
     return parser.parse_args()
@@ -26,8 +26,10 @@ if __name__ == "__main__":
     if option.scale is None:
         scale_modifier = ""
     else:
-        image.resize((image.width * option.scale, image.height * option.scale))
-        scale_modifier = f"x${option.scale}"
+        image = image.resize(
+            (round(image.width * option.scale), round(image.height * option.scale))
+        )
+        scale_modifier = f"x{option.scale}"
     image = numpy.array(image)
     image = cv2.Canny(image, option.low, option.high)
     image = image[:, :, None]

@@ -307,10 +307,13 @@ class InferedImage:
     @classmethod
     def load(
         cls,
-        path_or_img: Union[str, Image],
+        path_or_img: Union[str, Image, "InferedImage"],
         prestep: int | None = None,
         poststep: int | None = None,
     ):
+        if isinstance(path_or_img, InferedImage):
+            return path_or_img
+
         if isinstance(path_or_img, str):
             cache_key = (path_or_img, prestep, poststep)
             if cache_key in _image_cache.keys():
@@ -577,7 +580,7 @@ def gv1(
     model: str | None = None,
     nsfw: bool = False,
     cnet: list[str] | None = None,
-    cnimage: list[str] | None = None,
+    cnimage: list[str | Image | InferedImage] | None = None,
     cnscale: list[float] | None = None,
     cninit: Literal["add", "replace"] = "add",
     cnguess: bool = False,
@@ -939,7 +942,9 @@ def call_by_args(fn: Callable):
             extra = {"action": "store_true"}
         elif origin == list:
             extra = {
-                "type": type_args[0],
+                "type": typing.get_args(type_args[0])[0]
+                if typing.get_origin(type_args[0]) in [Union, UnionType]
+                else type_args[0],
                 "action": "extend",
                 "nargs": "*" if is_optional else "+",
             }

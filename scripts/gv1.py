@@ -88,6 +88,7 @@ class InferedImage:
         vae: str | None,
         scheduler: str | None,
         float32: bool,
+        xformers: bool,
         vae_tiling: bool,
         pil: Image | None = None,
         latent: torch.FloatTensor | None = None,
@@ -114,6 +115,7 @@ class InferedImage:
         self.vae = vae
         self.scheduler = scheduler
         self.float32 = float32
+        self.xformers = xformers
         self.vae_tiling = vae_tiling
         self.pil = pil
         self.latent = latent
@@ -170,6 +172,7 @@ class InferedImage:
         add_itxt("vae", image.vae)
         add_itxt("scheduler", image.scheduler)
         add_itxt("float32", image.float32)
+        add_itxt("xformers", image.xformers)
         add_itxt("vae_tiling", image.vae_tiling)
 
     def save(self, path: str):
@@ -258,6 +261,7 @@ class InferedImage:
         vae = fetch_str("vae")
         scheduler = fetch_str("scheduler")
         float32 = fetch_bool("float32")
+        xformers = fetch_bool("xformers")
         vae_tiling = fetch_bool("vae_tiling")
 
         prestep_of_image = image.sum_of_step if isinstance(image, InferedImage) else 0
@@ -301,6 +305,7 @@ class InferedImage:
             vae=vae,
             scheduler=scheduler,
             float32=float32,
+            xformers=xformers,
             vae_tiling=vae_tiling,
         )
 
@@ -369,6 +374,7 @@ class InferedImage:
             "vae": self.vae,
             "scheduler": self.scheduler,
             "float32": self.float32,
+            "xformers": self.xformers,
             "vae_tiling": self.vae_tiling,
         }
 
@@ -589,6 +595,7 @@ def gv1(
     vae: str | None = None,
     scheduler: SchedulersLiteral | None = None,
     float32: bool = False,
+    xformers: bool = False,
     vae_tiling: bool = False,
     output_type: Literal["png", "pil", "latent"] = "png",
     info: bool = False,
@@ -626,6 +633,7 @@ def gv1(
         vae: vae checkpoint to apply
         scheduler: scheduler name to use
         float32: use float32 to dtype
+        xformers: enable xformers
         vae_tiling: enable vae tiling
         output_type: `png` to output png
         info: output gv1 parameters of `image`
@@ -844,6 +852,8 @@ def gv1(
 
     # memory optimization
     pipe = pipe.to("cuda", torch_dtype=torch.float32 if float32 else torch.float16)
+    if xformers:
+        pipe.enable_xformers_memory_efficient_attention()
     if vae_tiling:
         pipe.vae.enable_tiling()
 
@@ -903,6 +913,7 @@ def gv1(
                 vae=vae,
                 scheduler=scheduler,
                 float32=float32,
+                xformers=xformers,
                 vae_tiling=vae_tiling,
                 pil=out.images[0],
             ).save(os.path.join(OUTDIR, f"{img_count:09}.png"))

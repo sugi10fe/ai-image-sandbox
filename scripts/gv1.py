@@ -747,7 +747,7 @@ def gv1(
             image_parameters = {
                 "latents": torchvision.transforms.functional.resize(
                     prev_image.result("latent"),
-                    (width // 8, height // 8),
+                    (height // 8, width // 8),
                     antialias=True,
                 )
             }
